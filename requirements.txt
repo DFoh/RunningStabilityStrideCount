@@ -1,2 +1,6 @@
 python-dotenv
-git+https://github.com/MedicalSchoolHamburgBiomechLab/BiomechLabTools.git
+git+https://github.com/MedicalSchoolHamburgBiomechLab/BiomechLabTools.git#egg=labtools
+matplotlib
+numpy
+pandas
+scipy
