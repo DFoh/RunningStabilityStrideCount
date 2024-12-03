@@ -1,9 +1,25 @@
+import json
 from itertools import product
 
 from labtools.utils.cutting_tool import InteractiveCuttingTool
 from labtools.utils.hdf5 import load_dict_from_hdf5, save_dict_to_hdf5
 
 from utils import *
+
+KNOWN_CUT_MARKS_FILE = Path(PATH_DATA_ROOT).joinpath('known_cut_marks.json')
+if KNOWN_CUT_MARKS_FILE.exists():
+    with open(KNOWN_CUT_MARKS_FILE, 'r') as file:
+        KNOWN_CUT_MARKS = json.load(file)
+else:
+    KNOWN_CUT_MARKS = dict()
+
+
+def save_cut_marks(subject: str, session: str, cut_marks: list):
+    if subject not in KNOWN_CUT_MARKS:
+        KNOWN_CUT_MARKS[subject] = dict()
+    KNOWN_CUT_MARKS[subject][session] = cut_marks
+    with open(KNOWN_CUT_MARKS_FILE, 'w') as file:
+        json.dump(KNOWN_CUT_MARKS, file)
 
 
 def get_cut_marks(data: dict) -> list:
@@ -37,7 +53,8 @@ def cut_data(data: dict, cut_marks: list) -> dict:
         data_out['Sensors'][sensor_id] = {'Accelerometer': acc_cut,
                                           'Gyroscope': gyro_cut,
                                           'Magnetometer': magnetometer_cut,
-                                          'Time': timestamp_cut}
+                                          'Time': timestamp_cut,
+                                          'Configuration': sensor_data['Configuration']}
     return data_out
 
 
@@ -52,7 +69,11 @@ def get_cut_apdm_data(subject: str, session: str):
     if len(session_file) != 1:
         return None
     data = load_dict_from_hdf5(session_file[0])
+    if KNOWN_CUT_MARKS.get(subject, {}).get(session):
+        cut_marks = KNOWN_CUT_MARKS[subject][session]
+        return cut_data(data, cut_marks)
     cut_marks = get_cut_marks(data)
+    save_cut_marks(subject, session, cut_marks)
     return cut_data(data, cut_marks)
 
 
