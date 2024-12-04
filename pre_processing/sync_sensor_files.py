@@ -1,18 +1,16 @@
 from itertools import product
 
-import matplotlib.pyplot as plt
 import matplotlib.backend_bases as back
-
+import matplotlib.pyplot as plt
 import numpy as np
-from scipy.signal import find_peaks
-
 from labtools.systems.apdm import get_apdm_sensor_data_by_location
-from labtools.utils.hdf5 import load_dict_from_hdf5
+from labtools.utils.hdf5 import load_dict_from_hdf5, save_dict_to_hdf5
+from scipy.signal import find_peaks
 
 from utils import *
 
 
-def get_kinetblue_data(subject: str, session: str, sensor_location: str):
+def get_kinetblue_data(subject: str, session: str, sensor_location: str = None):
     session_path = PATH_KINETBLUE_RAW
     if [sub for sub in session_path.iterdir() if sub.name == 'subjects']:
         session_path.joinpath('subjects')
@@ -23,13 +21,14 @@ def get_kinetblue_data(subject: str, session: str, sensor_location: str):
     if len(treadmill_file) != 1:
         return None
     data = load_dict_from_hdf5(treadmill_file[0])['data']
+    if sensor_location is None:
+        return data
     if sensor_location not in data.keys():
         raise ValueError(f'Location {sensor_location} not found in the sensor data.')
     return data[sensor_location]
 
 
-def get_apdm_data(subject: str, session: str, sensor_location: str):
-    sensor_location = SENSOR_LOCATIONS_APDM[sensor_location]
+def get_apdm_data(subject: str, session: str, sensor_location: str = None):
     session_path = PATH_APDM_CUT
     if [sub for sub in session_path.iterdir() if sub.name == 'subjects']:
         session_path = PATH_APDM_RAW.joinpath('subjects')
@@ -40,6 +39,9 @@ def get_apdm_data(subject: str, session: str, sensor_location: str):
     if len(session_file) != 1:
         return None
     data = load_dict_from_hdf5(session_file[0])
+    if sensor_location is None:
+        return data
+    sensor_location = SENSOR_LOCATIONS_APDM[sensor_location]
     return get_apdm_sensor_data_by_location(data, sensor_location)
 
 
@@ -82,9 +84,13 @@ def get_peaks(data: dict, system: str):
     fig, ax = plt.subplots()
     ax.plot(signal_range)
     signal_max = np.max(signal_range)
-    peaks, _ = find_peaks(signal_range, height=signal_max / 2, distance=sample_rate_hz / 4)
+    peaks, _ = find_peaks(signal_range, height=signal_max / 4, distance=sample_rate_hz / 4)
     for peak in peaks:
         ax.scatter(peak, signal_range[peak], c='r')
+    # filter to get the three highest peaks
+    peaks = peaks[np.argsort(signal_range[peaks])[-3:]]
+    for peak in peaks:
+        ax.scatter(peak, signal_range[peak], c='g')
     plt.show()
     if len(peaks) != 3:
         raise ValueError('Three peaks were not found in the signal.')
@@ -113,88 +119,109 @@ def get_time_delta(peaks_apdm, peaks_kinetblue, time_apdm, time_kinetblue) -> fl
     return dt_systems_mean
 
 
+def process_sensor_location(data_apdm: dict, data_kinetblue: dict, sensor_location: str):
+    loc_apdm = SENSOR_LOCATIONS_APDM.get(sensor_location)
+    if loc_apdm is None:
+        raise ValueError(f'Location {sensor_location} not found in the APDM sensor data.')
+    data_apdm_loc = get_apdm_sensor_data_by_location(data_apdm, loc_apdm)
+    data_kinetblue_loc = data_kinetblue[sensor_location]
+
+    t_orig = data_kinetblue_loc['timestamp'].copy()
+    print(f'{t_orig[0]=}')
+
+    # stage 1 - get the time delta based on the three knocks
+
+    peaks_apdm = get_peaks(data_apdm_loc, 'apdm')
+    peaks_kinetblue = get_peaks(data_kinetblue_loc, 'kinetblue')
+    dt_systems = get_time_delta(peaks_apdm, peaks_kinetblue, data_apdm_loc['Time'], data_kinetblue_loc['timestamp'])
+    # adjust kinetblue timestampts
+    data_kinetblue_loc['timestamp'] = data_kinetblue_loc['timestamp'] + dt_systems
+    print('# # # # # # # # #')
+    print(f'Time delta - stage 1: {dt_systems / 1E6}seconds')
+    print('# # # # # # # # #')
+
+    t_stage_1 = data_kinetblue_loc['timestamp'].copy()
+    print(f'{t_orig[0]=}')
+    print(f'{t_stage_1[0]=}')
+
+    # Plot the time-offset signals
+    time_apdm = data_apdm_loc['Time']
+    time_kinetblue = data_kinetblue_loc['timestamp']
+    gyro_apdm = data_apdm_loc['Gyroscope'][:, 0] * np.rad2deg(1)
+    gyro_kinetblue = data_kinetblue_loc['gyr'][:, 0]
+    fig, ax = plt.subplots()
+    ax.plot(time_apdm, gyro_apdm, 'k')
+    ax.plot(time_kinetblue, gyro_kinetblue, 'r--')
+    plt.show()
+
+    # stage 2 - synchronize the signals through convolution
+    new_sample_rate = 2000  # Hz
+
+    t_min = max(time_apdm[0], time_kinetblue[0])
+    t_max = min(time_apdm[-1], time_kinetblue[-1])
+
+    time_resampled = np.arange(t_min, t_max, 1E6 / new_sample_rate)
+    gyro_apdm_resampled = np.interp(time_resampled, time_apdm, gyro_apdm)
+    gyro_kinetblue_resampled = np.interp(time_resampled, time_kinetblue, gyro_kinetblue)
+
+    optimal_lags = []
+    for i in range(10):
+        start = i * 10000 + 20000
+        end = i * 10000 + 30000
+
+        t_r = time_resampled[start:end]
+        g_k = gyro_kinetblue_resampled[start:end]
+        g_a = gyro_apdm_resampled[start:end]
+        # Perform cross-correlation over the band of interest (+/-20 samples) to find the optimal lag
+        lag_range = 30  # +/- 20 samples
+        lags = np.arange(-lag_range, lag_range + 1)
+        cross_corr = np.array([np.sum(g_k * np.roll(g_a, lag)) for lag in lags])
+
+        # Find the optimal lag
+        optimal_lag_index = np.argmax(cross_corr)
+        optimal_lag = lags[optimal_lag_index]
+        optimal_lags.append(optimal_lag)
+
+        print(f'Optimal lag for synchronization: {optimal_lag} samples')
+    optimal_lag = np.median(optimal_lags)
+    optimal_timeshift = optimal_lag / new_sample_rate * 1E6
+    # Adjust the timestamps
+    data_kinetblue_loc['timestamp'] = data_kinetblue_loc['timestamp'] - optimal_timeshift
+
+    t_stage_2 = data_kinetblue_loc['timestamp'].copy()
+
+    # Plot the time-offset signals
+    time_apdm = data_apdm_loc['Time']
+    time_kinetblue = data_kinetblue_loc['timestamp']
+    gyro_apdm = data_apdm_loc['Gyroscope'][:, 0] * np.rad2deg(1)
+    gyro_kinetblue = data_kinetblue_loc['gyr'][:, 0]
+    fig, ax = plt.subplots()
+    ax.plot(time_apdm, gyro_apdm, 'k', label='APDM')
+    # ax.plot(t_orig, gyro_kinetblue, 'r--', label='KiNetBlue orig')
+    # ax.plot(t_stage_1, gyro_kinetblue, 'b--', label='KiNetBlue stage 1')
+    ax.plot(t_stage_2, gyro_kinetblue, 'g--', label='KiNetBlue stage 2')
+    plt.legend()
+    plt.show()
+    return data_kinetblue_loc
+
+
 if __name__ == '__main__':
-    for subject, session, sensor_location in product(SUBJECTS, SESSIONS, SENSOR_LOCATIONS):
-        print(f'Processing {subject} - {session} - {sensor_location}...')
-        data_apdm = get_apdm_data(subject, session, sensor_location)
-        data_kinetblue = get_kinetblue_data(subject, session, sensor_location)
-
-        t_orig = data_kinetblue['timestamp'].copy()
-        print(f'{t_orig[0]=}')
-
-        # stage 1 - get the time delta based on the three knocks
-
-        peaks_apdm = get_peaks(data_apdm, 'apdm')
-        peaks_kinetblue = get_peaks(data_kinetblue, 'kinetblue')
-        dt_systems = get_time_delta(peaks_apdm, peaks_kinetblue, data_apdm['Time'], data_kinetblue['timestamp'])
-        # adjust kinetblue timestampts
-        data_kinetblue['timestamp'] = data_kinetblue['timestamp'] + dt_systems
-        print('# # # # # # # # #')
-        print(f'Time delta - stage 1: {dt_systems / 1E6}seconds')
-        print('# # # # # # # # #')
-
-        t_stage_1 = data_kinetblue['timestamp'].copy()
-        print(f'{t_orig[0]=}')
-        print(f'{t_stage_1[0]=}')
-
-        # Plot the time-offset signals
-        time_apdm = data_apdm['Time']
-        time_kinetblue = data_kinetblue['timestamp']
-        gyro_apdm = data_apdm['Gyroscope'][:, 0] * np.rad2deg(1)
-        gyro_kinetblue = data_kinetblue['gyr'][:, 0]
-        fig, ax = plt.subplots()
-        ax.plot(time_apdm, gyro_apdm, 'k')
-        ax.plot(time_kinetblue, gyro_kinetblue, 'r--')
-        plt.show()
-
-        # stage 2 - synchronize the signals through convolution
-        new_sample_rate = 2000  # Hz
-
-        t_min = max(time_apdm[0], time_kinetblue[0])
-        t_max = min(time_apdm[-1], time_kinetblue[-1])
-
-        time_resampled = np.arange(t_min, t_max, 1E6 / new_sample_rate)
-        gyro_apdm_resampled = np.interp(time_resampled, time_apdm, gyro_apdm)
-        gyro_kinetblue_resampled = np.interp(time_resampled, time_kinetblue, gyro_kinetblue)
-
-        optimal_lags = []
-        for i in range(10):
-            start = i * 10000 + 20000
-            end = i * 10000 + 30000
-
-            t_r = time_resampled[start:end]
-            g_k = gyro_kinetblue_resampled[start:end]
-            g_a = gyro_apdm_resampled[start:end]
-            # Perform cross-correlation over the band of interest (+/-20 samples) to find the optimal lag
-            lag_range = 30  # +/- 20 samples
-            lags = np.arange(-lag_range, lag_range + 1)
-            cross_corr = np.array([np.sum(g_k * np.roll(g_a, lag)) for lag in lags])
-
-            # Find the optimal lag
-            optimal_lag_index = np.argmax(cross_corr)
-            optimal_lag = lags[optimal_lag_index]
-            optimal_lags.append(optimal_lag)
-
-            print(f'Optimal lag for synchronization: {optimal_lag} samples')
-        optimal_lag = np.median(optimal_lags)
-        optimal_timeshift = optimal_lag / new_sample_rate * 1E6
-        # Adjust the timestamps
-        data_kinetblue['timestamp'] = data_kinetblue['timestamp'] - optimal_timeshift
-
-        t_stage_2 = data_kinetblue['timestamp'].copy()
-        print(f'{t_orig[0]=}')
-        print(f'{t_stage_1[0]=}')
-        print(f'{t_stage_2[0]=}')
-
-        # Plot the time-offset signals
-        time_apdm = data_apdm['Time']
-        time_kinetblue = data_kinetblue['timestamp']
-        gyro_apdm = data_apdm['Gyroscope'][:, 0] * np.rad2deg(1)
-        gyro_kinetblue = data_kinetblue['gyr'][:, 0]
-        fig, ax = plt.subplots()
-        ax.plot(time_apdm, gyro_apdm, 'k', label='APDM')
-        # ax.plot(t_orig, gyro_kinetblue, 'r--', label='KiNetBlue orig')
-        ax.plot(t_stage_1, gyro_kinetblue, 'b--', label='KiNetBlue stage 1')
-        ax.plot(t_stage_2, gyro_kinetblue, 'g--', label='KiNetBlue stage 2')
-        plt.legend()
-        plt.show()
+    for subject, session in product(SUBJECTS, SESSIONS):
+        print(f'Processing {subject} - {session}')
+        # Check if file already exists
+        path_sync_out = PATH_KINETBLUE_RAW.as_posix().replace('raw', 'sync')
+        path_sync_file_out = Path(path_sync_out).joinpath(subject).joinpath(session)
+        path_sync_file_out.mkdir(parents=True, exist_ok=True)
+        filename = f'{subject}_{session}_RunTM_sync.hdf5'
+        path_file_out = path_sync_file_out.joinpath(filename)
+        if path_file_out.exists():
+            print(f'File {path_file_out} already exists. Skipping...')
+            continue
+        # load data
+        # Todo: handle missing data
+        data_apdm = get_apdm_data(subject, session)
+        data_kinetblue = get_kinetblue_data(subject, session)
+        for location in SENSOR_LOCATIONS:
+            data_kinetblue_loc = process_sensor_location(data_apdm, data_kinetblue, location)
+            data_kinetblue[location] = data_kinetblue_loc
+        save_dict_to_hdf5(data_kinetblue, path_file_out)
