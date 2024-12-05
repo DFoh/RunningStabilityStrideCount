@@ -35,7 +35,7 @@ def get_apdm_data(subject: str, session: str, sensor_location: str = None):
     session_path = session_path.joinpath(subject).joinpath(session)
     if not session_path.exists():
         return None
-    session_file = [f for f in session_path.iterdir()]
+    session_file = [f for f in session_path.iterdir() if "RunTM" in f.name]
     if len(session_file) != 1:
         return None
     data = load_dict_from_hdf5(session_file[0])
