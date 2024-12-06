@@ -1,3 +1,4 @@
+import warnings
 from itertools import product
 
 import matplotlib.backend_bases as back
@@ -40,6 +41,8 @@ def get_apdm_data(subject: str, session: str, sensor_location: str = None):
         return None
     data = load_dict_from_hdf5(session_file[0])
     if sensor_location is None:
+        if 'data' in data.keys():
+            data = data['data']
         return data
     sensor_location = SENSOR_LOCATIONS_APDM[sensor_location]
     return get_apdm_sensor_data_by_location(data, sensor_location)
@@ -68,34 +71,40 @@ def get_peak_range(signal, time_ms, n_seconds=30):
 
 def get_peaks(data: dict, system: str):
     if system == 'apdm':
-        acc = data['Accelerometer']
+        acc = data.get('Accelerometer')
+        if not acc:
+            acc = data.get('acc')
         acc_res = np.linalg.norm(acc, axis=1)
-        time_ms = (data['Time'])
+        time_ms = data.get('Time')
+        if not time_ms:
+            time_ms = data.get('timestamp')
     elif system == 'kinetblue':
         acc = data['acc'] * 9.81
         acc_res = np.linalg.norm(acc, axis=1)
-        time_ms = (data['timestamp'])
+        time_ms = data['timestamp']
     else:
         raise ValueError('System not recognized.')
 
     x1, x2 = get_peak_range(acc_res, time_ms)
     sample_rate_hz = int(1E6 / np.mean(np.diff(time_ms)))
     signal_range = acc_res[x1:x2]
-    fig, ax = plt.subplots()
-    ax.plot(signal_range)
+
     signal_max = np.max(signal_range)
     peaks, _ = find_peaks(signal_range, height=signal_max / 4, distance=sample_rate_hz / 4)
-    for peak in peaks:
-        ax.scatter(peak, signal_range[peak], c='r')
+    peaks_refined = peaks[np.argsort(signal_range[peaks])[-3:]]
+    # pplot results
+    # fig, ax = plt.subplots()
+    # ax.plot(signal_range)
+    # for peak in peaks:
+    #     ax.scatter(peak, signal_range[peak], c='r')
     # filter to get the three highest peaks
-    peaks = peaks[np.argsort(signal_range[peaks])[-3:]]
-    for peak in peaks:
-        ax.scatter(peak, signal_range[peak], c='g')
-    plt.show()
-    if len(peaks) != 3:
+    # for peak in peaks_refined:
+    #     ax.scatter(peak, signal_range[peak], c='g')
+    # plt.show()
+    if len(peaks_refined) != 3:
         raise ValueError('Three peaks were not found in the signal.')
 
-    return peaks + x1
+    return peaks_refined + x1
 
 
 def get_time_delta(peaks_apdm, peaks_kinetblue, time_apdm, time_kinetblue) -> float:
@@ -123,7 +132,9 @@ def process_sensor_location(data_apdm: dict, data_kinetblue: dict, sensor_locati
     loc_apdm = SENSOR_LOCATIONS_APDM.get(sensor_location)
     if loc_apdm is None:
         raise ValueError(f'Location {sensor_location} not found in the APDM sensor data.')
-    data_apdm_loc = get_apdm_sensor_data_by_location(data_apdm, loc_apdm)
+    # data_apdm_loc = get_apdm_sensor_data_by_location(data_apdm, loc_apdm)
+    data_apdm_loc = data_apdm[sensor_location]
+    # data_apdm_loc = get_apdm_sensor_data_by_location(data_apdm, sensor_location)
     data_kinetblue_loc = data_kinetblue[sensor_location]
 
     t_orig = data_kinetblue_loc['timestamp'].copy()
@@ -133,7 +144,8 @@ def process_sensor_location(data_apdm: dict, data_kinetblue: dict, sensor_locati
 
     peaks_apdm = get_peaks(data_apdm_loc, 'apdm')
     peaks_kinetblue = get_peaks(data_kinetblue_loc, 'kinetblue')
-    dt_systems = get_time_delta(peaks_apdm, peaks_kinetblue, data_apdm_loc['Time'], data_kinetblue_loc['timestamp'])
+    dt_systems = get_time_delta(peaks_apdm, peaks_kinetblue, data_apdm_loc['timestamp'],
+                                data_kinetblue_loc['timestamp'])
     # adjust kinetblue timestampts
     data_kinetblue_loc['timestamp'] = data_kinetblue_loc['timestamp'] + dt_systems
     print('# # # # # # # # #')
@@ -145,14 +157,19 @@ def process_sensor_location(data_apdm: dict, data_kinetblue: dict, sensor_locati
     print(f'{t_stage_1[0]=}')
 
     # Plot the time-offset signals
-    time_apdm = data_apdm_loc['Time']
+    time_apdm = data_apdm_loc.get('Time')
+    if time_apdm is None:
+        time_apdm = data_apdm_loc.get('timestamp')
     time_kinetblue = data_kinetblue_loc['timestamp']
-    gyro_apdm = data_apdm_loc['Gyroscope'][:, 0] * np.rad2deg(1)
+    gyro_apdm = data_apdm_loc.get('Gyroscope')
+    if gyro_apdm is None:
+        gyro_apdm = data_apdm_loc.get('gyr')
+    gyro_apdm = gyro_apdm[:, 0] * np.rad2deg(1)
     gyro_kinetblue = data_kinetblue_loc['gyr'][:, 0]
-    fig, ax = plt.subplots()
-    ax.plot(time_apdm, gyro_apdm, 'k')
-    ax.plot(time_kinetblue, gyro_kinetblue, 'r--')
-    plt.show()
+    # fig, ax = plt.subplots()
+    # ax.plot(time_apdm, gyro_apdm, 'k')
+    # ax.plot(time_kinetblue, gyro_kinetblue, 'r--')
+    # plt.show()
 
     # stage 2 - synchronize the signals through convolution
     new_sample_rate = 2000  # Hz
@@ -173,7 +190,7 @@ def process_sensor_location(data_apdm: dict, data_kinetblue: dict, sensor_locati
         g_k = gyro_kinetblue_resampled[start:end]
         g_a = gyro_apdm_resampled[start:end]
         # Perform cross-correlation over the band of interest (+/-20 samples) to find the optimal lag
-        lag_range = 30  # +/- 20 samples
+        lag_range = 300  # +/- 20 samples
         lags = np.arange(-lag_range, lag_range + 1)
         cross_corr = np.array([np.sum(g_k * np.roll(g_a, lag)) for lag in lags])
 
@@ -184,6 +201,8 @@ def process_sensor_location(data_apdm: dict, data_kinetblue: dict, sensor_locati
 
         print(f'Optimal lag for synchronization: {optimal_lag} samples')
     optimal_lag = np.median(optimal_lags)
+    if optimal_lag > 50:
+        warnings.warn('Optimal lag is greater than 50 samples. Check the synchronization.')
     optimal_timeshift = optimal_lag / new_sample_rate * 1E6
     # Adjust the timestamps
     data_kinetblue_loc['timestamp'] = data_kinetblue_loc['timestamp'] - optimal_timeshift
@@ -191,23 +210,36 @@ def process_sensor_location(data_apdm: dict, data_kinetblue: dict, sensor_locati
     t_stage_2 = data_kinetblue_loc['timestamp'].copy()
 
     # Plot the time-offset signals
-    time_apdm = data_apdm_loc['Time']
+    time_apdm = data_apdm_loc.get('Time')
+    if time_apdm is None:
+        time_apdm = data_apdm_loc.get('timestamp')
     time_kinetblue = data_kinetblue_loc['timestamp']
-    gyro_apdm = data_apdm_loc['Gyroscope'][:, 0] * np.rad2deg(1)
+    gyro_apdm = data_apdm_loc.get('Gyroscope')
+    if gyro_apdm is None:
+        gyro_apdm = data_apdm_loc.get('gyr')
+    gyro_apdm = gyro_apdm[:, 0] * np.rad2deg(1)
     gyro_kinetblue = data_kinetblue_loc['gyr'][:, 0]
     fig, ax = plt.subplots()
     ax.plot(time_apdm, gyro_apdm, 'k', label='APDM')
     # ax.plot(t_orig, gyro_kinetblue, 'r--', label='KiNetBlue orig')
-    # ax.plot(t_stage_1, gyro_kinetblue, 'b--', label='KiNetBlue stage 1')
-    ax.plot(t_stage_2, gyro_kinetblue, 'g--', label='KiNetBlue stage 2')
+    ax.plot(time_kinetblue, gyro_kinetblue, 'g--', label='KiNetBlue stage 2')
     plt.legend()
     plt.show()
     return data_kinetblue_loc
 
 
 if __name__ == '__main__':
+    SKIP = {'S05': ['S3'],
+            'S08': ['S1'],
+            'S18': ['S1'],
+            'S23': ['S1, S2', 'S3'],
+            }
     for subject, session in product(SUBJECTS, SESSIONS):
         print(f'Processing {subject} - {session}')
+        if subject in SKIP.keys():
+            if session in SKIP[subject]:
+                print(f'Skipping {subject} - {session}')
+                continue
         # Check if file already exists
         path_sync_out = PATH_KINETBLUE_RAW.as_posix().replace('raw', 'sync')
         path_sync_file_out = Path(path_sync_out).joinpath(subject).joinpath(session)
@@ -222,6 +254,11 @@ if __name__ == '__main__':
         data_apdm = get_apdm_data(subject, session)
         data_kinetblue = get_kinetblue_data(subject, session)
         for location in SENSOR_LOCATIONS:
-            data_kinetblue_loc = process_sensor_location(data_apdm, data_kinetblue, location)
+            try:
+                data_kinetblue_loc = process_sensor_location(data_apdm, data_kinetblue, location)
+            except Exception as e:
+                print(f'Error processing {location}: {e}')
+                data_kinetblue_loc = None
+                continue
             data_kinetblue[location] = data_kinetblue_loc
         save_dict_to_hdf5(data_kinetblue, path_file_out)
