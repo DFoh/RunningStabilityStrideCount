@@ -4,8 +4,7 @@ from itertools import product
 import matplotlib.backend_bases as back
 import matplotlib.pyplot as plt
 import numpy as np
-from labtools.systems.apdm import get_apdm_sensor_data_by_location
-from labtools.utils.hdf5 import load_dict_from_hdf5, save_dict_to_hdf5
+from labtools.utils.hdf5 import save_dict_to_hdf5
 from scipy.signal import find_peaks
 
 from utils import *
@@ -27,25 +26,6 @@ def get_kinetblue_data(subject: str, session: str, sensor_location: str = None):
     if sensor_location not in data.keys():
         raise ValueError(f'Location {sensor_location} not found in the sensor data.')
     return data[sensor_location]
-
-
-def get_apdm_data(subject: str, session: str, sensor_location: str = None):
-    session_path = PATH_APDM_CUT
-    if [sub for sub in session_path.iterdir() if sub.name == 'subjects']:
-        session_path = PATH_APDM_RAW.joinpath('subjects')
-    session_path = session_path.joinpath(subject).joinpath(session)
-    if not session_path.exists():
-        return None
-    session_file = [f for f in session_path.iterdir() if "RunTM" in f.name]
-    if len(session_file) != 1:
-        return None
-    data = load_dict_from_hdf5(session_file[0])
-    if sensor_location is None:
-        if 'data' in data.keys():
-            data = data['data']
-        return data
-    sensor_location = SENSOR_LOCATIONS_APDM[sensor_location]
-    return get_apdm_sensor_data_by_location(data, sensor_location)
 
 
 def get_peak_range(signal, time_ms, n_seconds=30):
@@ -229,10 +209,10 @@ def process_sensor_location(data_apdm: dict, data_kinetblue: dict, sensor_locati
 
 
 if __name__ == '__main__':
-    SKIP = {'S05': ['S3'],
-            'S08': ['S1'],
-            'S18': ['S1'],
-            'S23': ['S1, S2', 'S3'],
+    SKIP = {'S05': ['S3'],  # TODO: REASON?!?!
+            'S08': ['S1'],  # TODO: REASON?!?!
+            'S18': ['S1'],  # TODO: REASON?!?!
+            'S23': ['S1, S2', 'S3'],  # TODO: REASONS?!?!
             }
     for subject, session in product(SUBJECTS, SESSIONS):
         print(f'Processing {subject} - {session}')
