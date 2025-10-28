@@ -46,6 +46,7 @@ if __name__ == '__main__':
         t_mid = (t_min + t_max) / 2
         t_mid_plus_1_s = t_mid + 1_000_000
 
+        plt.close()
         plt.figure(figsize=(12, 8))
         plt.plot(t_apdm, gyr_x_apdm, label='APDM')
         plt.plot(t_knb, gyr_knb, label='KiNetBlue', linestyle='--')
@@ -57,4 +58,5 @@ if __name__ == '__main__':
         plt.tight_layout()
         filename = f'{p_id}-{session_id}.png'
         path_plot_out = path_plot_root.joinpath(filename)
-        plt.savefig(path_plot_out)
+        # plt.savefig(path_plot_out)
+        plt.show()

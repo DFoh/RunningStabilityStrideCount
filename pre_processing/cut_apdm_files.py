@@ -22,12 +22,15 @@ def save_cut_marks(subject: str, session: str, cut_marks: list):
         json.dump(KNOWN_CUT_MARKS, file)
 
 
-def get_cut_marks(data: dict) -> list:
+def get_cut_marks(data: dict, sensor_location: str = None) -> list:
     cutter = InteractiveCuttingTool(num_pieces=1,
                                     mode="start_stop")
     cut_marks = list()
-    for sensor_id, sensor_data in data['Sensors'].items():
-        acc = sensor_data['Accelerometer']
+    data = data['Sensors'] if "Sensors" in data.keys() else data
+    for sensor_id, sensor_data in data.items():
+        if sensor_location and sensor_location != sensor_id:
+            continue
+        acc = sensor_data['Accelerometer'] if 'Accelerometer' in sensor_data.keys() else sensor_data['acc']
         cm = cutter.get_cut_marks(display_data=acc)
         cut_marks.extend(cm)
     return [min(cut_marks), max(cut_marks)]
