@@ -204,7 +204,7 @@ def main():
     df_timestamps = load_cut_marks_final()
     # get_timestamps(df_timestamps)
     # make_final_cut_plots(df_timestamps)
-    # cut_files_final(df_timestamps)
+    cut_files_final(df_timestamps)
     make_check_plots_final()
 
 
