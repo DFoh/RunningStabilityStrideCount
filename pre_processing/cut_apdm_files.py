@@ -82,6 +82,10 @@ def get_cut_apdm_data(subject: str, session: str):
 
 if __name__ == '__main__':
     for subject, session in product(SUBJECTS, SESSIONS):
+        if subject != "S08":
+            continue
+        if session != "S1":
+            continue
         print(f'Processing {subject} - {session} ...')
         path_out = PATH_APDM_CUT.joinpath(subject).joinpath(session)
         path_out.mkdir(parents=True, exist_ok=True)

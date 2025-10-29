@@ -35,7 +35,8 @@ def get_peak_range(signal, time_ms, n_seconds=30):
     signal_range = signal[:n_samples]
     time_range = time_ms[:n_samples]
     fig, ax = plt.subplots()
-    ax.plot(time_range, signal_range)
+    ax.plot(time_ms, signal)
+    ax.set_xlim([time_range[0], time_range[-1]])
     fig.suptitle('Select the range of the signal where the three knocks are present.')
     pts = fig.ginput(2, timeout=0, mouse_add=back.MouseButton.RIGHT, mouse_pop=None)
     t1 = int(pts[0][0])
@@ -52,11 +53,11 @@ def get_peak_range(signal, time_ms, n_seconds=30):
 def get_peaks(data: dict, system: str):
     if system == 'apdm':
         acc = data.get('Accelerometer')
-        if not acc:
+        if acc is None:
             acc = data.get('acc')
         acc_res = np.linalg.norm(acc, axis=1)
         time_ms = data.get('Time')
-        if not time_ms:
+        if time_ms is None:
             time_ms = data.get('timestamp')
     elif system == 'kinetblue':
         acc = data['acc'] * 9.81
@@ -112,8 +113,10 @@ def process_sensor_location(data_apdm: dict, data_kinetblue: dict, sensor_locati
     loc_apdm = SENSOR_LOCATIONS_APDM.get(sensor_location)
     if loc_apdm is None:
         raise ValueError(f'Location {sensor_location} not found in the APDM sensor data.')
-    # data_apdm_loc = get_apdm_sensor_data_by_location(data_apdm, loc_apdm)
-    data_apdm_loc = data_apdm[sensor_location]
+    if sensor_location not in data_apdm.keys():
+        data_apdm_loc = get_apdm_sensor_data_by_location(data_apdm, loc_apdm)
+    else:
+        data_apdm_loc = data_apdm[sensor_location]
     # data_apdm_loc = get_apdm_sensor_data_by_location(data_apdm, sensor_location)
     data_kinetblue_loc = data_kinetblue[sensor_location]
 
@@ -209,11 +212,7 @@ def process_sensor_location(data_apdm: dict, data_kinetblue: dict, sensor_locati
 
 
 if __name__ == '__main__':
-    SKIP = {'S05': ['S3'],  # TODO: REASON?!?!
-            'S08': ['S1'],  # TODO: REASON?!?!
-            'S18': ['S1'],  # TODO: REASON?!?!
-            'S23': ['S1, S2', 'S3'],  # TODO: REASONS?!?!
-            }
+
     for subject, session in product(SUBJECTS, SESSIONS):
         print(f'Processing {subject} - {session}')
         if subject in SKIP.keys():
@@ -231,7 +230,7 @@ if __name__ == '__main__':
             continue
         # load data
         # Todo: handle missing data
-        data_apdm = get_apdm_data(subject, session)
+        data_apdm = get_apdm_data_cut(subject, session, condition="RunTM")
         data_kinetblue = get_kinetblue_data(subject, session)
         for location in SENSOR_LOCATIONS:
             try:

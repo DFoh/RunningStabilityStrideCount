@@ -18,12 +18,17 @@ def get_kinetblue_synced_data(participant_id, session_id):
     data_knb = load_dict_from_hdf5(file_knb[0])
     return data_knb
 
+
 if __name__ == '__main__':
     path_plot_root = PATH_DATA_ROOT.joinpath('plots', 'timestamp_check')
     path_plot_root.mkdir(parents=True, exist_ok=True)
     for p_id, session_id in product(SUBJECTS, SESSIONS):
         print(f'Loading data for {p_id} - {session_id}...')
-        data_apdm = get_apdm_data(p_id, session_id)
+        if p_id != "S05":
+            continue
+        if session_id != "S3":
+            continue
+        data_apdm = get_apdm_data_cut(p_id, session_id, condition="RunTM")
         if data_apdm is None:
             warnings.warn(f'No cut APDM data for {p_id} - {session_id}. Skipping...')
             continue
@@ -33,8 +38,11 @@ if __name__ == '__main__':
             warnings.warn(f'No synced KiNetBlue data for {p_id} - {session_id}. Skipping...')
             continue
 
+        data_apdm_left_foot = data_apdm.get('left_foot')
+        if data_apdm_left_foot is None:
+            data_apdm_left_foot = get_apdm_sensor_data_by_location(data_apdm, 'Left Foot')
 
-        gyr_x_apdm = data_apdm['left_foot']['gyr'][:, 0]  # rad/s
+        gyr_x_apdm = data_apdm_left_foot['gyr'][:, 0]  # rad/s
         gyr_x_apdm = gyr_x_apdm * (180.0 / 3.141592653589793)  # convert to deg/s
         t_apdm = data_apdm['left_foot']['timestamp']
 
@@ -58,5 +66,5 @@ if __name__ == '__main__':
         plt.tight_layout()
         filename = f'{p_id}-{session_id}.png'
         path_plot_out = path_plot_root.joinpath(filename)
-        # plt.savefig(path_plot_out)
-        plt.show()
+        plt.savefig(path_plot_out)
+        # plt.show()
