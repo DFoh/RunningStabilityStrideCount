@@ -55,6 +55,7 @@ def main():
         if data_knb is None:
             continue
 
+        make_plot = False
         t_ics_apdm = make_foot_events(data_apdm)
         t_ics_knb = make_foot_events(data_knb)
 
@@ -78,11 +79,12 @@ def main():
         max_diff = df['difference_ms'].abs().max()
         if max_diff > 10:
             warnings.warn(f'Large maximum difference of {max_diff} ms for {p_id} - {s_id}.')
+            make_plot = True
         avg_diff = df['difference_ms'].mean()
         if abs(avg_diff) > abs(worst_average_difference):
             worst_average_difference = avg_diff
             print(f'New worst average difference: {worst_average_difference} ms for {p_id} - {s_id}')
-        make_plot = False
+            make_plot = True
         if make_plot:
             gyr_apdm = data_apdm['left_foot']['gyr'][:, 0] * (180.0 / 3.141592653589793)
             gyr_knb = data_knb['left_foot']['gyr'][:, 0]
