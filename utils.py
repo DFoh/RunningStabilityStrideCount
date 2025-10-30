@@ -13,6 +13,9 @@ PATH_KINETBLUE_RAW = PATH_DATA_ROOT.joinpath('raw', 'KiNetBlue')
 PATH_APDM_CUT = PATH_DATA_ROOT.joinpath('cut', 'APDM')
 PATH_KINETBLUE_CUT = PATH_DATA_ROOT.joinpath('KiNetBlue', 'cut')
 
+STRIDE_COUNTS = [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200, 250, 300]
+
+
 SUBJECTS = [f'S{str(s).zfill(2)}' for s in range(1, 26)]
 SESSIONS = [f'S{str(s)}' for s in range(1, 4)]
 SENSOR_LOCATIONS = ['pelvis', 'sternum', 'left_tibia', 'left_foot']

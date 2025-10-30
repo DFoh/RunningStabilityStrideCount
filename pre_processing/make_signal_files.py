@@ -10,14 +10,11 @@ import pandas as pd
 from labtools.utils.hdf5 import load_dict_from_hdf5
 from labtools.signal_processing.resampling import resize_signal
 
+from utils import PATH_DATA_ROOT, SENSOR_LOCATIONS, STRIDE_COUNTS
 import matplotlib
 
 matplotlib.use("TkAgg")  # on older stacks "Qt5Agg" or "TkAgg" can be better
-from matplotlib import pyplot as plt
 
-from utils import PATH_DATA_ROOT, SENSOR_LOCATIONS
-
-stride_counts = [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200, 250, 300]
 avg_samples_per_stride = 100
 
 
@@ -47,7 +44,7 @@ def make_signals(path_knb_file, path_apdm_file, participant_id, session_id, path
     gait_events = get_gait_events(participant_id, session_id, path_gait_events)
     data_knb = load_dict_from_hdf5(path_knb_file)
     data_apdm = load_dict_from_hdf5(path_apdm_file)
-    for stride_count, sensor_location in product(stride_counts, SENSOR_LOCATIONS):
+    for stride_count, sensor_location in product(STRIDE_COUNTS, SENSOR_LOCATIONS):
         t_knb_start = gait_events[f'ic_times_knb_ms'][0]
         t_knb_end = gait_events[f'ic_times_knb_ms'][stride_count]
         t_apdm_start = gait_events[f'ic_times_apdm_ms'][0]
