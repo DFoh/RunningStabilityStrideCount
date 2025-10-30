@@ -3,7 +3,7 @@ import warnings
 from pathlib import Path
 
 from dotenv import load_dotenv
-from labtools.systems.apdm import get_apdm_sensor_data_by_location
+from labtools.systems.apdm.apdm import get_apdm_sensor_data_by_location
 from labtools.utils.hdf5 import load_dict_from_hdf5
 
 load_dotenv()
