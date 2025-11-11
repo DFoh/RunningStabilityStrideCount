@@ -4,11 +4,16 @@
 #SBATCH --mem=15G
 #SBATCH --nodes=1
 #SBATCH --output=%j.log
-#SBATCH --partition=workq
+#SBATCH --partition=gpuq
+
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
 
 start_ts=$(date +%s)
 
 echo "hpc job running as $USER on $HOSTNAME"
+echo "$SLURM_CPUS_PER_TASK"
+
 date
 echo SLURM_JOB_ID $SLURM_JOB_ID
 

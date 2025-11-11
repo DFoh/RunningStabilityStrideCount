@@ -15,7 +15,6 @@ if __name__ == '__main__':
     logger.info("# # # # # # # # # # # # # # # ")
     logger.info("# # # # # # # # # # # # # # # ")
     logger.info("Starting LDS analysis...")
-    logger.info(f"Running on {multiprocessing.cpu_count()} cores.")
 
     logger.info("Setting up data directories...")
     path_datasets = PATH_DATA_ROOT.joinpath("datasets")
@@ -27,23 +26,29 @@ if __name__ == '__main__':
     dataset_names = ["APDM_APDM", "KNB_KNB", "KNB_APDM"]
 
     for dataset_name, stride_count in product(dataset_names, STRIDE_COUNTS):
-        # stride_count_str = str(stride_count).zfill(3)
-        stride_count_str = "050"  # todo: REMOVE AFTER TESTING!!!
+        logger.info(f"Processing dataset: {dataset_name} with {stride_count} strides")
+        stride_count_str = str(stride_count).zfill(3)
         path_data_in = path_datasets.joinpath(dataset_name, stride_count_str)
-        logger.debug("Input data path: %s", path_data_in)
+        logger.debug(f"Input data path: {path_data_in}")
         path_data_out = path_results.joinpath(dataset_name, stride_count_str)
         path_data_out.mkdir(parents=True, exist_ok=True)
-        logger.debug("Output data path: %s", path_data_out)
+        logger.debug(f"Output data path: {path_data_out}")
 
         for sensor_location in SENSOR_LOCATIONS:
+            logger.info("Processing sensor location: %s", sensor_location)
             analysis = LDSAnalysis(path_data_in=path_data_in,
                                    path_data_out=path_data_out,
                                    sensor_location=sensor_location,
                                    force_recalculate=True)
             logger.info(f"Dataset: {dataset_name}, Strides: {stride_count}, Sensor: {sensor_location}")
             analysis.compute_time_delays()
+            tau = analysis.time_delay
+            info_strigng_tau = f"Time delay for {sensor_location} in {dataset_name} with {stride_count} strides: {tau}"
+            logger.info(info_strigng_tau)
             analysis.time_delay_summary()
             analysis.compute_embedding_dimensions()
+            info_string_embedding = f"Embedding dimension for {sensor_location} in {dataset_name} with {stride_count} strides: {analysis.embedding_dimension}"
+            logger.info(info_string_embedding)
             analysis.embedding_dimension_summary()
             analysis.compute_divergence_curves()
             divergence_curves = analysis.divergence_curves
@@ -55,7 +60,4 @@ if __name__ == '__main__':
             # analysis.compute_divergence_exponents()
             # print(analysis.divergence_exponents.head())
 
-            break
-
-        break
     logger.info("LDS analysis completed.")
