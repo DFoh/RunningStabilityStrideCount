@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 from itertools import product
 from pathlib import Path
@@ -10,6 +11,12 @@ from logger import logger
 from utils import PATH_DATA_ROOT, SENSOR_LOCATIONS, STRIDE_COUNTS
 
 if __name__ == '__main__':
+    logger.info("# # # # # # # # # # # # # # # ")
+    logger.info("# # # # # # # # # # # # # # # ")
+    logger.info("# # # # # # # # # # # # # # # ")
+    logger.info("Starting LDS analysis...")
+    logger.info(f"Running on {multiprocessing.cpu_count()} cores.")
+
     logger.info("Setting up data directories...")
     path_datasets = PATH_DATA_ROOT.joinpath("datasets")
     if not path_datasets.exists():
@@ -21,7 +28,7 @@ if __name__ == '__main__':
 
     for dataset_name, stride_count in product(dataset_names, STRIDE_COUNTS):
         # stride_count_str = str(stride_count).zfill(3)
-        stride_count_str = "150"  # todo: REMOVE AFTER TESTING!!!
+        stride_count_str = "050"  # todo: REMOVE AFTER TESTING!!!
         path_data_in = path_datasets.joinpath(dataset_name, stride_count_str)
         logger.debug("Input data path: %s", path_data_in)
         path_data_out = path_results.joinpath(dataset_name, stride_count_str)
@@ -51,3 +58,4 @@ if __name__ == '__main__':
             break
 
         break
+    logger.info("LDS analysis completed.")
